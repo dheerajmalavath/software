@@ -14,12 +14,217 @@
 
 ## 📋 TABLE OF CONTENTS
 
+0. [Master Blueprint — What to Modify & Where to Find Names](#0--master-blueprint--what-to-modify--where-to-find-names)
 1. [Docker — Multi-Container from GitHub](#1-docker--multi-container-from-github)
 2. [Jenkins — Scripted Pipeline CI/CD](#2-jenkins--scripted-pipeline-cicd)
 3. [Nagios — Monitoring via Docker](#3-nagios--monitoring-via-docker)
 4. [Kubernetes — Deploy & Scale with Minikube](#4-kubernetes--deploy--scale-with-minikube)
 5. [AWS EC2 — Cloud Deployment](#5-aws-ec2--cloud-deployment)
 6. [Scenario Q&A — All 9 Sets](#6-scenario-qa--all-9-sets)
+
+---
+---
+
+# 0. 🎯 MASTER BLUEPRINT — What to Modify & Where to Find Names
+
+> **Before you write any configuration file in the exam, read this section!**
+> This guide tells you exactly **WHICH lines to change** in your `Dockerfile`, `docker-compose.yml`, `Jenkinsfile`, and `Kubernetes YAML`, and **WHERE to find those values** in the given repository.
+
+---
+
+## 0.1 — The 3 Golden Places to Find Your Values
+
+```
+1. In the Given Repository:
+   • File: pom.xml               → Tells you: WAR vs JAR packaging, output filename, dependencies.
+   • Command: dir target\ (or ls) → Shows the exact compiled file name (e.g. ticket-reservation.war).
+   • Code: src/main/resources/   → Tells you: database name, username, password in application.properties.
+
+2. In the Question Paper:
+   • GitHub Repository URL       → Used in git clone and Jenkinsfile Checkout stage.
+   • Target Port (e.g. 9090, 8080)→ Used in Docker port mapping and EC2 Security Group rules.
+   • Number of Replicas (e.g. 4) → Used in kubectl scale and Kubernetes deployment.yaml.
+
+3. In Your Local Tools:
+   • Docker Hub Username         → Used when tagging and pushing images.
+   • Jenkins Tool Name ('Maven') → Configured under Manage Jenkins → Tools.
+   • Credentials ID ('dockerhub-creds') → Configured under Manage Jenkins → Credentials.
+```
+
+---
+
+## 0.2 — File-by-File Modification Cheat Sheet
+
+### 1. In `Dockerfile` — What to Change:
+```dockerfile
+# ⚠️ LINE 1: Base Image
+# WHERE TO FIND: Look at <packaging> in pom.xml
+# If <packaging>war</packaging>  → Use: FROM tomcat:9.0
+# If <packaging>jar</packaging>  → Use: FROM eclipse-temurin:17-jdk
+FROM tomcat:9.0
+
+RUN rm -rf /usr/local/tomcat/webapps/*
+
+# ⚠️ LINE 2: Artifact Name
+# WHERE TO FIND: Run 'mvn clean package', then check the filename inside target/ folder
+# PRO-TIP: Use the wildcard '*.war' so you NEVER get a filename error!
+COPY target/*.war /usr/local/tomcat/webapps/ROOT.war
+
+# ⚠️ LINE 3: Exposed Port
+# For Tomcat webapps → always 8080. For Flask → 5000. For Nginx → 80.
+EXPOSE 8080
+
+CMD ["catalina.sh", "run"]
+```
+
+---
+
+### 2. In `docker-compose.yml` — What to Change:
+```yaml
+services:
+  app:
+    build: .
+    # ⚠️ Container Name: Name it after the exam project (e.g. oltrs-app, library-app)
+    container_name: oltrs-app
+    ports:
+      # ⚠️ Port Mapping: "HostPort:ContainerPort"
+      # HostPort = port asked in question paper (e.g. 9090 or 8080)
+      # ContainerPort = internal app port (8080 for Tomcat, 5000 for Flask, 80 for Nginx)
+      - "9090:8080"
+    depends_on:
+      - db
+    environment:
+      # ⚠️ DB Host: MUST match the service name of your database below ('db')
+      DB_HOST: db
+      # ⚠️ DB Name: Look in src/main/resources/application.properties or use project name
+      DB_NAME: oltrsdb
+    networks:
+      - appnet
+
+  db:
+    image: mysql:8.0
+    container_name: oltrs-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: oltrsdb
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppass
+    volumes:
+      - dbdata:/var/lib/mysql
+    ports:
+      # ⚠️ Host Port 3307: Prevents conflict with Windows MySQL running on port 3306!
+      - "3307:3306"
+    networks:
+      - appnet
+
+volumes:
+  dbdata:
+
+networks:
+  appnet:
+    driver: bridge
+```
+
+---
+
+### 3. In `Jenkinsfile` (Scripted Pipeline) — What to Change:
+```groovy
+node {
+    // ⚠️ Tool Name: Must match EXACT name given in Manage Jenkins → Tools → Maven
+    def mvnHome = tool 'Maven'
+
+    stage('Checkout') {
+        // ⚠️ Git URL & Branch: Copy the exact link from your question paper
+        // Check if repo default branch is 'main' or 'master' on GitHub
+        git url: 'https://github.com/archanareddyse/OLTRS.git',
+            branch: 'main'
+    }
+
+    stage('Build') {
+        sh "${mvnHome}/bin/mvn clean install -DskipTests"
+    }
+
+    stage('Test') {
+        sh "${mvnHome}/bin/mvn test"
+    }
+
+    stage('Docker Build') {
+        // ⚠️ Image Tag: Replace with YOUR Docker Hub username and project name
+        sh "docker build -t yourdockerhubusername/oltrs:latest ."
+    }
+
+    stage('Docker Push') {
+        // ⚠️ credentialsId: Must match ID created in Manage Jenkins → Credentials
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-creds',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+        )]) {
+            sh "docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}"
+            sh "docker push yourdockerhubusername/oltrs:latest"
+        }
+    }
+}
+```
+
+---
+
+### 4. In Kubernetes (`deployment.yaml` & `service.yaml`) — What to Change:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  # ⚠️ Replicas: Question papers always ask for 4 replicas
+  replicas: 4
+  selector:
+    matchLabels:
+      app: myapp           # ⚠️ MUST match template.metadata.labels.app below!
+  template:
+    metadata:
+      labels:
+        app: myapp         # ⚠️ MUST match selector above and Service selector!
+    spec:
+      containers:
+      - name: myapp
+        # ⚠️ Image: Use the Docker Hub image you pushed from Jenkins
+        image: yourdockerhubusername/oltrs:latest
+        ports:
+        # ⚠️ containerPort: 8080 for Tomcat, 80 for Nginx
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-service
+spec:
+  selector:
+    app: myapp             # ⚠️ MUST match deployment template label 'app: myapp'
+  type: NodePort
+  ports:
+  - port: 80               # Service cluster port
+    targetPort: 8080       # ⚠️ MUST match the containerPort above (Tomcat = 8080)
+    nodePort: 30080        # Static external port (range: 30000–32767)
+```
+
+---
+
+## 0.3 — Master Lookup Table for All 9 Exam Sets
+
+| Set # | Application Name | GitHub Repository URL | Packaging | Artifact Name in `target/` | Base Docker Image | Port |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **SET 1** | Digital Library System | `github.com/deepthisagar7/library-management.git` | `jar` | `library-management-1.0-SNAPSHOT.jar` | `openjdk:17` / `tomcat:9.0` | 8080 / 9090 |
+| **SET 2** | Metro Reservation System | `github.com/deepthisagar7/metro-reservation.git` | `war` | `metro-reservation.war` | `tomcat:9.0` | 9090:8080 |
+| **SET 3** | AI-OLMS Learning Portal | `github.com/deepthisagar7/AI-OLMS.git` | `war` | `AI-OLMS.war` (or `target/*.war`) | `tomcat:9.0` | 9090:8080 |
+| **SET 4** | Hospital Management System | `github.com/Kumbhambhargavi75/HospitalManagementSystem` | `war` / static | `HospitalManagementSystem.war` | `tomcat:9.0` / `nginx` | 9090:8080 |
+| **SET 5** | Food Management System | `github.com/Kumbhambhargavi75/FoodSystem` | python / war | `FoodSystem.war` (Flask API + Nginx in Q1) | `tomcat:9.0` (Flask:5000, Nginx:80) | 9090 / 5000 |
+| **SET 6** | Campus Event Mgmt (CEMS) | `github.com/Kumbhambhargavi75/CEMS` | `war` | `CEMS.war` (WordPress + MySQL in Q1) | `tomcat:9.0` (WP:8080) | 9090 / 8080 |
+| **SET 7** | Online Ticket System (OLTRS) | `github.com/archanareddyse/OLTRS.git` | `war` | `ticket-reservation.war` | `tomcat:9.0` | 9090:8080 |
+| **SET 8** | Online Ticket System (OLTRS) | `github.com/archanareddyse/OLTRS.git` | `war` | `ticket-reservation.war` (with Nagios) | `tomcat:9.0` | 9090:8080 |
+| **SET 9** | Online Ticket System (OLTRS) | `github.com/archanareddyse/OLTRS.git` | `war` | `ticket-reservation.war` | `tomcat:9.0` | 9090:8080 |
+
+---
 
 ---
 ---

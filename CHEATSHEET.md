@@ -561,9 +561,11 @@ docker compose down -v
 ---
 ---
 
-# 2. JENKINS — Scripted Pipeline CI/CD
+# 2. JENKINS — CI/CD Automation (Freestyle & Scripted Pipeline)
 
-> **Exam scenario:** Given a GitHub repo. Automate build, test, Docker push using Jenkins Pipeline.
+> **Exam scenario:** 
+> - **SET 1, 2, 3:** Automated Build & Testing using **Jenkins Freestyle Project**.
+> - **SET 4 through 9:** Automated CI/CD using **Jenkins Scripted Pipeline** (Groovy Jenkinsfile).
 
 ---
 
@@ -571,44 +573,30 @@ docker compose down -v
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Start Jenkins container (port 9080 — avoids conflict with apps on 8080)
-   Output: Container started, Jenkins accessible at localhost:9080
+📌 Start Jenkins container with persistent storage and auto-restart
+   Port 9080 used to avoid conflicts with other apps on port 8080
 ─────────────────────────────────────────────────────────────────────
 $ docker run -d \
     --name jenkins \
+    --restart=always \
     -p 9080:8080 \
     -p 50000:50000 \
     -v jenkins_home:/var/jenkins_home \
+    -v /var/run/docker.sock:/var/run/docker.sock \
     jenkins/jenkins:lts
 ```
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Get the initial admin unlock password
-   Output: a32-character hex string e.g. 74317dd4e3b84be88878a845d2a05286
+📌 Get the initial admin unlock password (for brand new install)
+   Output: 32-character hex string e.g. 74317dd4e3b84be88878a845d2a05286
 ─────────────────────────────────────────────────────────────────────
 $ docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Follow Jenkins startup logs (wait for "Jenkins is fully up and running")
-   Output: ...Jenkins is fully up and running
-─────────────────────────────────────────────────────────────────────
-$ docker logs -f jenkins
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Stop Jenkins (data saved in volume)
-   Output: jenkins
-─────────────────────────────────────────────────────────────────────
-$ docker stop jenkins
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Start Jenkins again (all jobs/configs preserved)
+📌 Resume Jenkins if it was stopped
    Output: jenkins
 ─────────────────────────────────────────────────────────────────────
 $ docker start jenkins
@@ -616,53 +604,189 @@ $ docker start jenkins
 
 ---
 
-## 2.2 — Jenkins Initial Setup (in Browser at localhost:9080)
+## 2.2 — First-Time Unlock & Setup (Where to Click in Browser)
 
 ```
 ─────────────────────────────────────────────────────────────────────
-Step 1 → Paste unlock password → Click Continue
-Step 2 → Click "Install suggested plugins" → Wait 3-5 mins
-Step 3 → Create Admin User:
-         Username : admin
-         Password : admin123
-         Full name: Admin
-         Email    : admin@test.com
-Step 4 → Keep URL as http://localhost:9080/ → Save and Finish
+🌐 Open Browser: http://localhost:9080
 ─────────────────────────────────────────────────────────────────────
-🌐 URL: http://localhost:9080
-```
+Step 1 [Unlock Screen]:
+  • Copy 32-character password from command above.
+  • Paste into "Administrator password" box.
+  • Click "Continue" (orange/blue button).
 
----
+Step 2 [Customize Jenkins]:
+  • Click "Install suggested plugins" (left card).
+  • Wait 2–3 minutes while plugins download.
 
-## 2.3 — Configure Tools in Jenkins
+Step 3 [Create First Admin User]:
+  • Username        : admin (or dheeraj)
+  • Password        : admin123
+  • Confirm password: admin123
+  • Full Name       : Admin
+  • E-mail address  : admin@example.com
+  • Click "Save and Continue" button.
 
-```
-─────────────────────────────────────────────────────────────────────
-📌 Add Maven tool so pipelines can use mvn commands
-   Navigate: Manage Jenkins → Tools → Maven → Add Maven
-   Name     : Maven         ← EXACT name used in Jenkinsfile
-   Version  : 3.9.x (Install automatically ✔)
-─────────────────────────────────────────────────────────────────────
-🌐 Manage Jenkins → Tools → Maven installations → Add Maven
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Add Docker Hub credentials so pipeline can push images securely
-   Navigate: Manage Jenkins → Credentials → Global → Add Credentials
-   Kind    : Username with password
-   Username: your-dockerhub-username
-   Password: your-dockerhub-password
-   ID      : dockerhub-creds      ← EXACT ID used in Jenkinsfile
-─────────────────────────────────────────────────────────────────────
-🌐 Manage Jenkins → Credentials → System → Global credentials → Add
+Step 4 [Instance Configuration]:
+  • Jenkins URL: keep default http://localhost:9080/
+  • Click "Save and Finish" → Click "Start using Jenkins".
 ```
 
 ---
 
-## 2.4 — Jenkinsfile Templates
+## 2.3 — How to Install Plugins (Where to Click in Browser)
 
-### Template A — Basic Build + Test (Freestyle-style pipeline)
+> Needed for Maven builds, Docker integration, and Email notifications.
+
+```
+─────────────────────────────────────────────────────────────────────
+🌐 Browser: http://localhost:9080
+─────────────────────────────────────────────────────────────────────
+Step 1 → On the left sidebar menu, click "Manage Jenkins".
+Step 2 → Under "System Configuration", click "Plugins".
+Step 3 → Click the "Available plugins" tab at the top.
+Step 4 → In the search box, search and tick the following:
+         [✔] Maven Integration
+         [✔] Docker Pipeline
+         [✔] Email Extension
+Step 5 → Click "Install" button at the bottom of the table.
+Step 6 → (Optional) Tick "Restart Jenkins when installation is complete".
+```
+
+---
+
+## 2.4 — Configure Maven Tool & Docker Hub Credentials
+
+```
+─────────────────────────────────────────────────────────────────────
+🌐 Configure Maven: Manage Jenkins → Tools
+─────────────────────────────────────────────────────────────────────
+Step 1 → Left sidebar → Click "Manage Jenkins" → Click "Tools".
+Step 2 → Scroll down to the "Maven" section.
+Step 3 → Click "Add Maven" button.
+Step 4 → Name: Maven   (⚠️ EXACT spelling: matches tool 'Maven' in scripts!)
+Step 5 → Tick "Install automatically".
+Step 6 → Version: Select latest 3.9.x.
+Step 7 → Click "Save" button at the bottom.
+```
+
+```
+─────────────────────────────────────────────────────────────────────
+🌐 Add Credentials: Manage Jenkins → Credentials
+─────────────────────────────────────────────────────────────────────
+Step 1 → Left sidebar → Click "Manage Jenkins" → Click "Credentials".
+Step 2 → Under "Stores scoped to Jenkins", click "(global)" domain.
+Step 3 → Click "Add credentials" button (top right).
+Step 4 → Kind       : Select "Username with password".
+Step 5 → Scope      : Global.
+Step 6 → Username   : <your-dockerhub-username>
+Step 7 → Password   : <your-dockerhub-password>
+Step 8 → ID         : dockerhub-creds  (⚠️ EXACT: matches Jenkinsfile ID!)
+Step 9 → Description: Docker Hub Login.
+Step 10→ Click "Create" button.
+```
+
+---
+
+## 2.5 — Freestyle Project Setup (SET 1, 2, 3 Exam Questions — Step-by-Step UI Guide)
+
+> **Exam Task (SET 1, 2, 3):** Implement automated CI workflow using Jenkins Freestyle Project for Java app.
+
+```
+─────────────────────────────────────────────────────────────────────
+🌐 Creating the Freestyle Job
+─────────────────────────────────────────────────────────────────────
+Step 1 → On Jenkins Dashboard, click "New Item" (top left menu).
+Step 2 → Enter Item Name: Library-Management-Freestyle
+Step 3 → Select "Freestyle project" (first radio option).
+Step 4 → Click "OK" button at the bottom.
+
+Step 5 [Source Code Management]:
+  • Select radio button "Git".
+  • Repository URL: https://github.com/deepthisagar7/library-management.git
+    (or https://github.com/archanareddyse/OLTRS.git)
+  • Credentials   : - none - (public repo)
+  • Branch Specifier: */main (or */master)
+
+Step 6 [Build Triggers]:
+  • Tick checkbox: [✔] "GitHub hook trigger for GITScm polling"
+  • (Optional for testing without webhook: tick "Poll SCM" → Schedule: H/5 * * * *)
+
+Step 7 [Build Steps]:
+  • Click "Add build step" dropdown.
+  • Select "Invoke top-level Maven targets".
+    - Maven Version: Select "Maven" (the tool configured in Step 2.4).
+    - Goals        : clean package -DskipTests
+  • (Alternative if Maven plugin isn't used):
+    - Select "Execute Windows batch command" or "Execute shell"
+    - Command: mvn clean package -DskipTests
+
+Step 8 [Post-build Actions]:
+  • Click "Add post-build action" dropdown.
+  • Select "Archive the artifacts".
+  • Files to archive: target/*.war, target/*.jar
+
+Step 9 → Click "Save" button (bottom left).
+```
+
+```
+─────────────────────────────────────────────────────────────────────
+🌐 Running & Showing the Examiner (Freestyle Project)
+─────────────────────────────────────────────────────────────────────
+Step 1 → On the job page, click "Build Now" in left sidebar.
+Step 2 → Under "Build History" (bottom left), watch build #1 appear with a blue/green ball.
+Step 3 → Click on "#1" → Click "Console Output" in left menu.
+Step 4 → Show examiner:
+         • Cloning from GitHub
+         • [INFO] BUILD SUCCESS
+         • Archiving artifacts: target/ticket-reservation.war
+```
+
+---
+
+## 2.6 — Scripted Pipeline Job Setup (SET 4–9 Exam Questions — Step-by-Step UI Guide)
+
+> **Exam Task (SET 4 through 9):** Create Groovy-based Scripted Pipeline with stages, webhook triggers, Docker push & email alerts.
+
+```
+─────────────────────────────────────────────────────────────────────
+🌐 Creating the Pipeline Job
+─────────────────────────────────────────────────────────────────────
+Step 1 → On Jenkins Dashboard, click "New Item" (top left menu).
+Step 2 → Enter Item Name: OLTRS-Pipeline
+Step 3 → Select "Pipeline" (third radio option).
+Step 4 → Click "OK" button at bottom.
+
+Step 5 [Build Triggers]:
+  • Tick checkbox: [✔] "GitHub hook trigger for GITScm polling"
+
+Step 6 [Pipeline Section]:
+  • Definition: Select "Pipeline script" from dropdown.
+  • In the "Script" text area, paste one of the Groovy Jenkinsfile templates below.
+
+Step 7 → Click "Save" button (bottom left).
+```
+
+```
+─────────────────────────────────────────────────────────────────────
+🌐 Running & Showing the Examiner (Stage View)
+─────────────────────────────────────────────────────────────────────
+Step 1 → On the job page, click "Build Now" in left sidebar.
+Step 2 → Observe the "Stage View" table on the main job page:
+         ┌──────────┬──────────┬──────────┬──────────────────────┐
+         │ Checkout │  Build   │   Test   │  Docker Build & Push │
+         ├──────────┼──────────┼──────────┼──────────────────────┤
+         │  ✔ 12s   │  ✔ 35s   │  ✔ 18s   │        ✔ 42s         │
+         └──────────┴──────────┴──────────┴──────────────────────┘
+Step 3 → Click any green box to view stage logs, or click build "#1" → "Console Output"
+         to show the examiner full step-by-step CI/CD execution.
+```
+
+---
+
+## 2.7 — Jenkinsfile Templates (Groovy Code for Script Box)
+
+### Template A — Build, Test & Package (Standard CI)
 
 ```groovy
 node {
@@ -687,7 +811,7 @@ node {
 }
 ```
 
-### Template B — Build + Docker Build + Docker Push
+### Template B — Full CI/CD (Build + Docker Image Build + Docker Hub Push)
 
 ```groovy
 node {
@@ -723,7 +847,7 @@ node {
 }
 ```
 
-### Template C — With Email Notification on Failure
+### Template C — With Error Handling & Email Alerts (Exam Scenario Favorite)
 
 ```groovy
 node {
@@ -743,25 +867,22 @@ node {
             sh "${mvnHome}/bin/mvn test"
         }
 
-        stage('Docker Build') {
-            sh "docker build -t yourusername/oltrs:latest ."
-        }
-
-        stage('Docker Push') {
+        stage('Docker Build & Push') {
             withCredentials([usernamePassword(
                 credentialsId: 'dockerhub-creds',
                 usernameVariable: 'DOCKER_USER',
                 passwordVariable: 'DOCKER_PASS'
             )]) {
+                sh "docker build -t ${DOCKER_USER}/oltrs:latest ."
                 sh "docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}"
                 sh "docker push ${DOCKER_USER}/oltrs:latest"
             }
         }
 
-        // Email on SUCCESS
+        // Email ONLY on SUCCESS
         emailext(
             subject: "✅ SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            body: "Build passed! URL: ${env.BUILD_URL}",
+            body: "Build completed successfully! View: ${env.BUILD_URL}",
             to: 'team@example.com'
         )
 
@@ -769,15 +890,15 @@ node {
         // Email ONLY on FAILURE
         emailext(
             subject: "❌ FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            body: "Build failed!\nError: ${e.getMessage()}\nLogs: ${env.BUILD_URL}console",
+            body: "Pipeline failed!\nError: ${e.getMessage()}\nLogs: ${env.BUILD_URL}console",
             to: 'team@example.com'
         )
-        throw e
+        throw e // Rethrow so Jenkins marks build as RED/FAILED
     }
 }
 ```
 
-### Template D — Intentional Failure (to test email alert)
+### Template D — Intentional Failure (SET 4 Q2c: Test Email on Build Failure)
 
 ```groovy
 node {
@@ -791,12 +912,12 @@ node {
             sh "${mvnHome}/bin/mvn clean install -DskipTests"
         }
         stage('Force Fail') {
-            sh "this-command-does-not-exist"    // ← intentional failure
+            sh "nonexistent-command-to-force-fail" // Intentional failure
         }
     } catch (e) {
         emailext(
             subject: "❌ FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            body: "Error: ${e.getMessage()}",
+            body: "Detected intentional build failure: ${e.getMessage()}",
             to: 'team@example.com'
         )
         throw e
@@ -804,91 +925,41 @@ node {
 }
 ```
 
-### Template E — Declarative Pipeline (alternative syntax)
+---
 
-```groovy
-pipeline {
-    agent any
-    tools {
-        maven 'Maven'
-    }
-    stages {
-        stage('Checkout') {
-            steps {
-                git url: 'https://github.com/archanareddyse/OLTRS.git'
-            }
-        }
-        stage('Build') {
-            steps { sh 'mvn clean install -DskipTests' }
-        }
-        stage('Test') {
-            steps { sh 'mvn test' }
-        }
-        stage('Package') {
-            steps { sh 'mvn package' }
-        }
-    }
-    post {
-        failure {
-            emailext subject: "FAILED: ${env.JOB_NAME}",
-                     body: "Build failed",
-                     to: 'team@example.com'
-        }
-        success {
-            echo 'Build successful!'
-        }
-    }
-}
+## 2.8 — GitHub Webhook Configuration (GitHub Website UI)
+
+```
+─────────────────────────────────────────────────────────────────────
+🌐 In GitHub: https://github.com/<your-username>/<repo>
+─────────────────────────────────────────────────────────────────────
+Step 1 → Go to your GitHub repository in browser.
+Step 2 → Click "Settings" tab (top navbar).
+Step 3 → In the left sidebar, click "Webhooks".
+Step 4 → Click "Add webhook" button (top right).
+Step 5 → Payload URL : http://<your-public-ip-or-ngrok>:9080/github-webhook/
+Step 6 → Content type: Select "application/json" from dropdown.
+Step 7 → Which events: Select "Just the push event".
+Step 8 → Click "Add webhook" (green button).
+         (A green checkmark next to the webhook indicates successful connectivity)
 ```
 
 ---
 
-## 2.5 — Create Pipeline Job in Jenkins UI
+## 2.9 — Scheduled Build Trigger (Cron — SET 6 asks 6 PM daily)
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Create a new Pipeline job in Jenkins
+🌐 In Jenkins: Job → Configure → Build Triggers
 ─────────────────────────────────────────────────────────────────────
-Step 1 → Click "New Item" in sidebar
-Step 2 → Enter name: OLTRS-Pipeline
-Step 3 → Select "Pipeline" → Click OK
-Step 4 → Build Triggers: tick "GitHub hook trigger for GITScm polling"
-Step 5 → Pipeline section → Definition: "Pipeline script"
-Step 6 → Paste Jenkinsfile from Template B or C above
-Step 7 → Click Save
-Step 8 → Click "Build Now"
-Step 9 → Click build number → "Console Output" to see logs
-```
-
----
-
-## 2.6 — Scheduled Build Trigger (Cron)
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Auto-run pipeline at a specific time (SET 6 asks 6 PM daily)
-   Navigate: Job → Configure → Build Triggers → "Build periodically"
-─────────────────────────────────────────────────────────────────────
-Every day at 6:00 PM  →  0 18 * * *
-Every day at 9:00 AM  →  0 9 * * *
-Every 15 minutes      →  H/15 * * * *
-Every weekday 9 AM    →  0 9 * * 1-5
-```
-
----
-
-## 2.7 — Useful Jenkins Navigation Cheat Sheet
-
-```
-─────────────────────────────────────────────────────────────────────
-See which stage failed     →  Job → Build # → Stage View
-See error details          →  Job → Build # → Console Output
-Install plugins            →  Manage Jenkins → Plugins → Available
-Add Maven tool             →  Manage Jenkins → Tools → Maven
-Add credentials            →  Manage Jenkins → Credentials → Global
-Configure email (SMTP)     →  Manage Jenkins → System → Email
-Restart Jenkins            →  http://localhost:9080/restart
-─────────────────────────────────────────────────────────────────────
+Step 1 → On your Job page, click "Configure" (left sidebar).
+Step 2 → Scroll to "Build Triggers" section.
+Step 3 → Tick checkbox: [✔] "Build periodically".
+Step 4 → In "Schedule" text box, enter cron expression:
+         0 18 * * *       (Every day at 6:00 PM)
+         0 9 * * 1-5      (Every weekday at 9:00 AM)
+         H/15 * * * *     (Every 15 minutes)
+Step 5 → Click "Save" button.
 ```
 
 ---
@@ -939,7 +1010,40 @@ $ docker exec -it nagios bash
 
 ---
 
-## 3.2 — Nagios Config Files (inside container)
+## 3.2 — Nagios Web Dashboard UI Navigation (Where to Click & Show the Examiner)
+
+```
+─────────────────────────────────────────────────────────────────────
+🌐 Open Browser: http://localhost:8090/nagios
+   Login Prompt: Username = nagiosadmin  |  Password = nagios
+─────────────────────────────────────────────────────────────────────
+Where to click in Left Navigation Sidebar:
+
+1. [Tactical Overview]:
+   • Shows high-level donut charts of monitoring health.
+   • Displays total Hosts Up/Down and Services OK/Warning/Critical.
+
+2. [Hosts]:
+   • Click "Hosts" in left menu.
+   • Shows table of all monitored machines.
+   • Status column shows "UP" in solid Green.
+
+3. [Services]:
+   • Click "Services" in left menu.
+   • Shows list of all checks: HTTP, PING, CPU Load, Disk Usage, Processes.
+   • Status column shows "OK" (Green), "WARNING" (Yellow), or "CRITICAL" (Red).
+
+4. [Service Problems]:
+   • Click to display ONLY services currently failing or exceeding thresholds.
+   • Use this when demonstrating failure detection to the examiner.
+
+5. [Event Log]:
+   • Shows historical timestamped log of state changes (e.g. OK → CRITICAL).
+```
+
+---
+
+## 3.3 — Nagios Config Files (inside container)
 
 ```
 ─────────────────────────────────────────────────────────────────────
@@ -954,7 +1058,7 @@ Contacts config→  /opt/nagios/etc/objects/contacts.cfg
 
 ---
 
-## 3.3 — Sample Host Definition
+## 3.4 — Sample Host Definition
 
 ```
 ─────────────────────────────────────────────────────────────────────
@@ -977,7 +1081,7 @@ define host {
 
 ---
 
-## 3.4 — Sample Service Definition
+## 3.5 — Sample Service Definition
 
 ```
 ─────────────────────────────────────────────────────────────────────
@@ -1019,7 +1123,7 @@ define service {
 
 ---
 
-## 3.5 — Nagios Status Reference
+## 3.6 — Nagios Status Reference
 
 ```
 ─────────────────────────────────────────────────────────────────────
@@ -1032,7 +1136,7 @@ UNKNOWN  (Orange) → Cannot determine status (check failed to run)
 
 ---
 
-## 3.6 — Common Nagios Plugins
+## 3.7 — Common Nagios Plugins
 
 ```
 ─────────────────────────────────────────────────────────────────────
@@ -1048,7 +1152,7 @@ check_smtp    →  Is mail server working?
 
 ---
 
-## 3.7 — Nagios via Docker Compose (with App — SET 8)
+## 3.8 — Nagios via Docker Compose (with App — SET 8)
 
 ```yaml
 services:
@@ -1475,242 +1579,183 @@ kubectl get all           # verify empty
 
 # 5. AWS EC2 — Cloud Deployment
 
-> **Exam scenario:** Launch EC2 instance, deploy Docker app, make it accessible via public IP.
+> **Exam scenario:** Launch EC2 instance, deploy Docker app, make it accessible via public IP, troubleshoot security group ports, and cleanup.
 
 ---
 
-## 5.1 — Launch EC2 Instance (AWS Console in Browser)
+## 5.1 — Launch EC2 Instance (Step-by-Step AWS Console UI Guide)
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Launch a free-tier EC2 instance step by step
+🌐 Open AWS Console: https://console.aws.amazon.com/ec2/
 ─────────────────────────────────────────────────────────────────────
-Step 1 → Login: https://console.aws.amazon.com
-Step 2 → Search "EC2" in top bar → Click EC2
-Step 3 → Click "Launch Instance" (orange button)
+Step 1 → Login with your AWS credentials.
+Step 2 → Check Region: Top-right navbar, select "US East (N. Virginia) us-east-1"
+         or "Asia Pacific (Mumbai) ap-south-1".
+Step 3 → Left sidebar → Click "Instances" → Click orange button "Launch instances".
 
-Configure:
-  Name           : my-app-server
-  AMI            : Ubuntu Server 22.04 LTS (Free tier eligible)
-  Instance type  : t2.micro (Free tier eligible)
-  Key pair       : Create new → name it "mykey" → Download .pem file
-                   ⚠️ SAVE THIS FILE — you cannot download again!
-  Security group : Create new → Add rules:
-                   SSH    Port 22   Source: Anywhere (0.0.0.0/0)
-                   HTTP   Port 80   Source: Anywhere (0.0.0.0/0)
-                   Custom Port 8080 Source: Anywhere (0.0.0.0/0)
-                   Custom Port 9090 Source: Anywhere (0.0.0.0/0)
-  Storage        : 8 GB gp3 (default, free tier)
+Step 4 [Name and tags]:
+  • Value: my-app-server
 
-Step 4 → Click "Launch Instance"
-Step 5 → Wait 1–2 minutes for status to show "Running"
-Step 6 → Note the PUBLIC IPv4 address (shown in instance details)
+Step 5 [Application and OS Images - AMI]:
+  • Click "Ubuntu" box.
+  • Dropdown: "Ubuntu Server 22.04 LTS (HVM), SSD Volume Type" (Free tier eligible).
+
+Step 6 [Instance type]:
+  • Select: t2.micro (1 vCPU, 1 GiB Memory, Free tier eligible).
+
+Step 7 [Key pair (login)]:
+  • Click "Create new key pair" link (on the right).
+  • Key pair name          : mykey
+  • Key pair type          : RSA
+  • Private key file format: .pem (for OpenSSH / PowerShell)
+  • Click "Create key pair" button.
+  • ⚠️ The browser downloads "mykey.pem". Save it in your Downloads folder!
+
+Step 8 [Network settings (Security Group Firewall)]:
+  • Click "Edit" button (top right of Network settings panel).
+  • Firewall: Select "Create security group".
+  • Security group name: web-app-sg
+  • Description        : Allow SSH and Web App Traffic
+  • Inbound Security Group Rules:
+    ┌────────────┬────────────┬────────────┬────────────────────────┐
+    │ Type       │ Protocol   │ Port Range │ Source                 │
+    ├────────────┼────────────┼────────────┼────────────────────────┤
+    │ SSH        │ TCP        │ 22         │ Anywhere (0.0.0.0/0)   │
+    │ HTTP       │ TCP        │ 80         │ Anywhere (0.0.0.0/0)   │
+    │ Custom TCP │ TCP        │ 8080       │ Anywhere (0.0.0.0/0)   │
+    │ Custom TCP │ TCP        │ 9090       │ Anywhere (0.0.0.0/0)   │
+    └────────────┴────────────┴────────────┴────────────────────────┘
+    (Click "Add security group rule" button to add rows for 8080 and 9090).
+
+Step 9 [Configure storage]:
+  • Keep default: 1x 8 GiB gp3 (Free tier eligible).
+
+Step 10 [Launch]:
+  • In right-hand "Summary" panel, click orange "Launch instance" button.
+  • Click "View all instances".
+  • Wait ~1 minute until "Instance state" displays "Running" with a green check.
+  • Click your instance row: copy the "Public IPv4 address" (e.g. 54.210.xx.xx).
 ```
 
 ---
 
-## 5.2 — Connect to EC2 via SSH
+## 5.2 — Connect to EC2 (Browser-Based Terminal vs PowerShell SSH)
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Connect from Windows PowerShell using the .pem key file
-   Output: Welcome to Ubuntu 22.04... ubuntu@ip-xxx:~$
+🌐 METHOD 1: 1-Click Browser Terminal (EC2 Instance Connect) — FASTEST
 ─────────────────────────────────────────────────────────────────────
-$ cd C:\Users\YourName\Downloads       # go to where .pem was saved
-$ ssh -i "mykey.pem" ubuntu@<EC2-PUBLIC-IP>
+Step 1 → In EC2 Instances table, tick the checkbox next to your instance.
+Step 2 → Click "Connect" button at the top of the table.
+Step 3 → Select tab "EC2 Instance Connect".
+Step 4 → Username: ubuntu (pre-filled).
+Step 5 → Click orange "Connect" button.
+         A black terminal opens directly in your browser! No SSH/key setup needed!
 ```
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 If you get permission error on .pem file (Windows fix)
-   Output: Permissions fixed
+💻 METHOD 2: Windows PowerShell SSH (Using .pem Key)
 ─────────────────────────────────────────────────────────────────────
+$ cd C:\Users\dheer\Downloads
 $ icacls "mykey.pem" /inheritance:r /grant:r "%USERNAME%":"(R)"
-$ ssh -i "mykey.pem" ubuntu@<EC2-PUBLIC-IP>
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Alternative: Connect via Browser (no .pem needed)
-   AWS Console → EC2 → Instances → Select instance → Connect
-   → Choose "EC2 Instance Connect" → Click Connect
-   Output: Browser terminal opens ✅
-─────────────────────────────────────────────────────────────────────
-🌐 AWS Console → EC2 → Instances → Connect → EC2 Instance Connect
+$ ssh -i "mykey.pem" ubuntu@<YOUR-EC2-PUBLIC-IP>
 ```
 
 ---
 
-## 5.3 — Setup EC2 After Connecting (run inside EC2 terminal)
+## 5.3 — Setup EC2 Terminal & Deploy App (Run inside EC2 Shell)
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Update package list (always do this first)
-   Output: ...Reading package lists... Done
+📌 Run inside EC2 Ubuntu terminal to install Docker and build/run app
 ─────────────────────────────────────────────────────────────────────
-$ sudo apt-get update -y
-```
+# 1. Update OS packages
+sudo apt-get update -y
 
-```
-─────────────────────────────────────────────────────────────────────
-📌 Install Docker on Ubuntu EC2
-   Output: ...Setting up docker.io... done
-─────────────────────────────────────────────────────────────────────
-$ sudo apt-get install -y docker.io
-```
+# 2. Install Docker & Git
+sudo apt-get install -y docker.io git maven
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker ubuntu
 
-```
-─────────────────────────────────────────────────────────────────────
-📌 Start Docker service and enable auto-start on reboot
-   Output: (no output = success)
-─────────────────────────────────────────────────────────────────────
-$ sudo systemctl start docker
-$ sudo systemctl enable docker
-```
+# 3. Clone repository
+git clone https://github.com/archanareddyse/OLTRS.git
+cd OLTRS
 
-```
-─────────────────────────────────────────────────────────────────────
-📌 Add ubuntu user to docker group (run docker without sudo)
-   Output: (logout and login again to apply)
-─────────────────────────────────────────────────────────────────────
-$ sudo usermod -aG docker ubuntu
-$ exit
-$ ssh -i "mykey.pem" ubuntu@<EC2-PUBLIC-IP>    # reconnect
+# 4. Build WAR package
+mvn clean package -DskipTests
+
+# 5. Build Docker image and run container on port 9090
+docker build -t oltrs:latest .
+docker run -d -p 9090:8080 --name myapp oltrs:latest
+
+# 6. Verify container is running
+docker ps
 ```
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Install git (to clone GitHub repos)
-   Output: ...Setting up git... done
+🌐 Verify Website Accessibility in Browser
 ─────────────────────────────────────────────────────────────────────
-$ sudo apt-get install -y git
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Install Maven (to build WAR files)
-   Output: ...Setting up maven... done
-─────────────────────────────────────────────────────────────────────
-$ sudo apt-get install -y maven
+Open browser on your laptop:
+http://<YOUR-EC2-PUBLIC-IP>:9090
 ```
 
 ---
 
-## 5.4 — Deploy App on EC2
+## 5.4 — Edit Security Group Inbound Rules (When Port 8080/9090 is Blocked)
+
+> **Scenario Question:** "Web application runs on port 9090, but users cannot access it through the public IP. What configurations should be verified?"
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Clone GitHub repo onto EC2
-   Output: Cloning into 'OLTRS'...
+🌐 How to Add Inbound Rules in AWS Console UI
 ─────────────────────────────────────────────────────────────────────
-$ git clone https://github.com/archanareddyse/OLTRS.git
-$ cd OLTRS
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Build the WAR file
-   Output: [INFO] BUILD SUCCESS
-─────────────────────────────────────────────────────────────────────
-$ mvn clean package -DskipTests
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Build Docker image
-   Output: Successfully built abc123  Successfully tagged oltrs:latest
-─────────────────────────────────────────────────────────────────────
-$ docker build -t oltrs:latest .
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Run the container on port 9090
-   Output: container ID printed
-─────────────────────────────────────────────────────────────────────
-$ docker run -d -p 9090:8080 --name myapp oltrs:latest
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Verify container is running
-   Output: CONTAINER ID  IMAGE  STATUS  PORTS
-─────────────────────────────────────────────────────────────────────
-$ docker ps
-```
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Access app in browser
-   Replace <EC2-PUBLIC-IP> with the IPv4 shown in AWS Console
-─────────────────────────────────────────────────────────────────────
-🌐 http://<EC2-PUBLIC-IP>:9090
+Step 1 → Left sidebar in EC2 Console → Under "Network & Security", click "Security Groups".
+Step 2 → Click on your Security Group name (e.g. web-app-sg).
+Step 3 → In the lower panel, click the "Inbound rules" tab.
+Step 4 → Click "Edit inbound rules" button (on the right).
+Step 5 → Click "Add rule" button at the bottom:
+         • Type      : Custom TCP
+         • Port range: 9090 (or 8080)
+         • Source    : Anywhere-IPv4 (0.0.0.0/0)
+Step 6 → Click "Save rules" (orange button).
+         The port is unblocked instantly — refresh browser to verify!
 ```
 
 ---
 
-## 5.5 — Deploy index.html with Nginx (Simple Website — SET 4, 5, 6)
+## 5.5 — Assign Elastic IP (When Instance Has No Public IPv4 Address)
+
+> **Scenario Question:** "EC2 instance has no Public IPv4 address, but application must be accessed over internet. What AWS configuration is required?"
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Create a simple HTML file and serve it with Nginx
-   Access: http://<EC2-PUBLIC-IP>  (port 80)
+🌐 How to Allocate & Associate an Elastic IP in AWS Console UI
 ─────────────────────────────────────────────────────────────────────
-$ echo "<h1>Hello from EC2!</h1>" > index.html
-$ docker run -d -p 80:80 \
-    -v $(pwd)/index.html:/usr/share/nginx/html/index.html \
-    --name webserver nginx
+Step 1 → Left sidebar in EC2 Console → Under "Network & Security", click "Elastic IPs".
+Step 2 → Click "Allocate Elastic IP address" button (top right).
+Step 3 → Keep defaults → Click orange "Allocate" button.
+Step 4 → Select the newly created Elastic IP from the list.
+Step 5 → Click "Actions" dropdown menu (top right) → Click "Associate Elastic IP address".
+Step 6 → Resource type: Select "Instance".
+Step 7 → Instance     : Click search box and choose your running EC2 instance.
+Step 8 → Private IP   : Select private IP from dropdown.
+Step 9 → Click orange "Associate" button.
+         Your instance now has a permanent static Public IPv4 address!
 ```
 
 ---
 
-## 5.6 — Deploy from GitHub with Custom Dockerfile
+## 5.6 — Instance Cleanup & Termination (Where to Click at End of Exam)
 
-```bash
-# Clone repo that has only HTML/static files + create Dockerfile
-git clone https://github.com/Kumbhambhargavi75/HospitalManagementSystem
-cd HospitalManagementSystem
-
-# Create Dockerfile for Nginx static site
-cat > Dockerfile << 'EOF'
-FROM nginx:latest
-COPY . /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-EOF
-
-# Build and run
-docker build -t hospital-site .
-docker run -d -p 80:80 --name hospital hospital-site
-
-# Access: http://<EC2-PUBLIC-IP>
-```
-
----
-
-## 5.7 — EC2 Security Group Rules (Fix Access Issues)
+> **Scenario Question:** "Testing is complete. Stop container and terminate instance to avoid resource usage."
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Add inbound rule to allow traffic on a specific port
-   Navigate: EC2 → Instances → Click instance → Security tab
-           → Click Security Group → Edit Inbound Rules → Add Rule
-─────────────────────────────────────────────────────────────────────
-SSH access (port 22)  → Type: SSH,         Source: 0.0.0.0/0
-HTTP (port 80)        → Type: HTTP,        Source: 0.0.0.0/0
-App port 8080         → Type: Custom TCP,  Port: 8080, Source: 0.0.0.0/0
-App port 9090         → Type: Custom TCP,  Port: 9090, Source: 0.0.0.0/0
-MySQL port 3306       → Type: MySQL/Aurora,Source: 0.0.0.0/0
-```
-
----
-
-## 5.8 — EC2 Cleanup
-
-```
-─────────────────────────────────────────────────────────────────────
-📌 Stop the Docker container on EC2 (run inside EC2 terminal)
-   Output: myapp
+📌 Step 1: Stop Docker Container inside EC2 Terminal
 ─────────────────────────────────────────────────────────────────────
 $ docker stop myapp
 $ docker rm myapp
@@ -1718,10 +1763,14 @@ $ docker rm myapp
 
 ```
 ─────────────────────────────────────────────────────────────────────
-📌 Terminate EC2 instance (AWS Console — PERMANENT, cannot undo)
-   EC2 → Instances → Select → Instance State → Terminate
+🌐 Step 2: Terminate EC2 Instance in AWS Console UI
 ─────────────────────────────────────────────────────────────────────
-🌐 AWS Console → EC2 → Instances → Select → Instance State → Terminate
+Step 1 → In EC2 Console, click "Instances" in left sidebar.
+Step 2 → Tick the checkbox next to your instance.
+Step 3 → Click "Instance state" dropdown menu (at top).
+Step 4 → Click "Terminate instance".
+Step 5 → In confirmation popup, click orange "Terminate" button.
+         (Status changes to "Shutting-down" then "Terminated" — permanent cleanup).
 ```
 
 ---
@@ -1836,3 +1885,4 @@ $ docker rm myapp
 | AWS Console | your email | your password |
 | EC2 SSH (Ubuntu) | `ubuntu` | (use .pem key) |
 | EC2 SSH (Amazon Linux) | `ec2-user` | (use .pem key) |
+
